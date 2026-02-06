@@ -9,7 +9,11 @@
   "theme_color": "#4ade80",
   "orientation": "portrait-primary",
   "id": "kolekcja-muzyki",
-  "categories": ["music", "entertainment", "utilities"],
+  "categories": [
+    "music",
+    "entertainment",
+    "utilities"
+  ],
   "lang": "pl-PL",
   "icons": [
     {
