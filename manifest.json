@@ -2,13 +2,12 @@
   "name": "Moja Kolekcja Muzyki",
   "short_name": "Muzyka",
   "description": "Zarządzaj swoją kolekcją muzyki - albumy, płyty CD, winyle",
-  "start_url": "/kolekcjoner-muzyki/",
-  "scope": "/kolekcjoner-muzyki/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#1a1a2e",
   "theme_color": "#4ade80",
   "orientation": "portrait-primary",
-  "id": "/kolekcjoner-muzyki/",
   "lang": "pl-PL",
   "icons": [
     {
@@ -35,5 +34,7 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "categories": ["music", "entertainment"],
+  "screenshots": []
 }
