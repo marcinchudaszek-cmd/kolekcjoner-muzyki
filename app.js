@@ -110,38 +110,80 @@ function fetchMissingCovers() {
 // ==========================================
 
 function searchByBarcodeWithTracks(barcode) {
-    if (!barcode || barcode.length < 8) { 
-        showNotification('⚠️ Nieprawidłowy kod!', 'warning'); 
+    console.log('🔍 searchByBarcodeWithTracks wywołane z:', barcode);
+    
+    if (!barcode || barcode.trim().length < 8) { 
+        showNotification('⚠️ Nieprawidłowy kod! (min. 8 znaków)', 'warning'); 
         return; 
     }
     
+    barcode = barcode.trim();
+    
     var resultDiv = document.getElementById('scannerResult');
+    
+    if (!resultDiv) {
+        console.error('❌ Nie znaleziono #scannerResult!');
+        showNotification('❌ Błąd interfejsu', 'error');
+        return;
+    }
+    
     resultDiv.classList.remove('hidden');
-    resultDiv.innerHTML = '<div class="scanner-loading"><div class="spinner"></div><p>Szukam albumu i utworów...</p></div>';
+    resultDiv.innerHTML = '<div class="scanner-loading" style="padding:30px;text-align:center;">' +
+        '<div class="spinner" style="border:3px solid #333;border-top:3px solid #4ade80;border-radius:50%;width:40px;height:40px;margin:0 auto;animation:spin 1s linear infinite;"></div>' +
+        '<p style="margin-top:15px;color:#4ade80;">🔍 Szukam: <strong>' + barcode + '</strong></p>' +
+        '<p style="color:#888;font-size:0.9rem;">Odpytuję bazę MusicBrainz...</p>' +
+        '</div>';
+    
+    console.log('🔍 Wysyłam zapytanie do MusicBrainz dla kodu:', barcode);
     
     fetch('https://musicbrainz.org/ws/2/release/?query=barcode:' + barcode + '&fmt=json', { 
-        headers: { 'User-Agent': 'MusicCollectionApp/1.0' } 
+        headers: { 'User-Agent': 'MusicCollectionApp/1.0 (contact@example.com)' } 
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) { 
+        console.log('🔍 Odpowiedź MusicBrainz:', r.status);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json(); 
+    })
     .then(function(data) {
+        console.log('🔍 Dane MusicBrainz:', data);
         if (data.releases && data.releases.length > 0) {
             var release = data.releases[0];
             var releaseId = release.id;
+            console.log('🔍 Znaleziono release:', release.title, 'ID:', releaseId);
+            
+            resultDiv.innerHTML = '<div style="padding:20px;text-align:center;color:#4ade80;">' +
+                '<p>✅ Znaleziono: <strong>' + release.title + '</strong></p>' +
+                '<p style="color:#888;">Pobieram szczegóły...</p></div>';
             
             return fetch('https://musicbrainz.org/ws/2/release/' + releaseId + '?inc=recordings+artist-credits&fmt=json', {
-                headers: { 'User-Agent': 'MusicCollectionApp/1.0' }
+                headers: { 'User-Agent': 'MusicCollectionApp/1.0 (contact@example.com)' }
             });
         } else {
-            throw new Error('Nie znaleziono');
+            throw new Error('NOT_FOUND');
         }
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) { 
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json(); 
+    })
     .then(function(releaseData) {
+        console.log('🔍 Szczegóły release:', releaseData);
         displayBarcodeResultsWithTracks(releaseData);
     })
     .catch(function(error) {
-        console.error(error);
-        resultDiv.innerHTML = '<h4>❌ Nie znaleziono</h4><p>Spróbuj wpisać kod ręcznie lub dodaj album manualnie.</p>';
+        console.error('🔍 Błąd:', error);
+        var errorMsg = '';
+        if (error.message === 'NOT_FOUND') {
+            errorMsg = '<h4>😕 Nie znaleziono w bazie</h4>' +
+                '<p>Kod <strong>' + barcode + '</strong> nie został znaleziony w MusicBrainz.</p>' +
+                '<p style="margin-top:10px;color:#888;">Możesz dodać album ręcznie.</p>';
+        } else {
+            errorMsg = '<h4>❌ Błąd połączenia</h4>' +
+                '<p>Nie udało się połączyć z bazą MusicBrainz.</p>' +
+                '<p style="color:#888;font-size:0.9rem;">Sprawdź połączenie internetowe lub spróbuj ponownie.</p>';
+        }
+        resultDiv.innerHTML = '<div style="padding:20px;text-align:center;">' + errorMsg + 
+            '<button onclick="searchByBarcode(\'' + barcode + '\')" style="margin-top:15px;padding:10px 20px;background:#4ade80;border:none;border-radius:8px;cursor:pointer;">🔄 Spróbuj ponownie</button></div>';
     });
 }
 
@@ -833,9 +875,33 @@ function startBarcodeScanner() {
         { facingMode: "environment" },  // Tylna kamera
         config,
         function(decodedText) { 
-            console.log('📷 Zeskanowano:', decodedText);
-            showNotification('📷 Kod: ' + decodedText, 'success'); 
+            console.log('📷 Zeskanowano kod:', decodedText);
+            
+            // Natychmiast zatrzymaj skaner
             stopBarcodeScanner();
+            
+            // Pokaż notyfikację
+            showNotification('📷 Zeskanowano: ' + decodedText, 'success'); 
+            
+            // Wpisz kod do pola ręcznego (dla widoczności)
+            var manualInput = document.getElementById('manualBarcode');
+            if (manualInput) {
+                manualInput.value = decodedText;
+                console.log('📷 Wpisano do pola:', manualInput.value);
+            }
+            
+            // Pokaż że szukamy
+            var previewDiv = document.getElementById('scannerPreview');
+            if (previewDiv) {
+                previewDiv.innerHTML = '<div style="padding:40px;text-align:center;">' +
+                    '<p style="font-size:2rem;">✅</p>' +
+                    '<p style="color:#4ade80;font-size:1.2rem;margin:10px 0;">Kod zeskanowany!</p>' +
+                    '<p style="color:#fff;">' + decodedText + '</p>' +
+                    '</div>';
+            }
+            
+            // Szukaj w bazie
+            console.log('📷 Wywołuję searchByBarcode...');
             searchByBarcode(decodedText); 
         },
         function(errorMessage) {
@@ -1957,7 +2023,7 @@ function closeKaraokeModal() {
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/kolekcjoner-muzyki/sw.js')
+        navigator.serviceWorker.register('./sw.js')
             .then(function(registration) {
                 console.log('📱 Service Worker zarejestrowany!');
             })
