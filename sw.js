@@ -1,52 +1,47 @@
-const CACHE_NAME = 'muzyka-v4';
-const BASE_PATH = '/kolekcjoner-muzyki/';
-const urlsToCache = [
-  BASE_PATH,
-  BASE_PATH + 'index.html',
-  BASE_PATH + 'style.css',
-  BASE_PATH + 'app.js',
-  BASE_PATH + 'manifest.json',
-  BASE_PATH + 'icon-192.png',
-  BASE_PATH + 'icon-512.png'
-];
+// This is the "Offline page" service worker
 
-self.addEventListener('install', function(event) {
-  self.skipWaiting();
+importScripts('https://storage.googleapis.com/workbox-cdn/releases/5.1.2/workbox-sw.js');
+
+const CACHE = "pwabuilder-page";
+
+// TODO: replace the following with the correct offline fallback page i.e.: const offlineFallbackPage = "offline.html";
+const offlineFallbackPage = "ToDo-replace-this-name.html";
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener('install', async (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(urlsToCache);
-    })
+    caches.open(CACHE)
+      .then((cache) => cache.add(offlineFallbackPage))
   );
 });
 
-self.addEventListener('fetch', function(event) {
-  event.respondWith(
-    fetch(event.request).then(function(response) {
-      if (response && response.status === 200) {
-        var responseClone = response.clone();
-        caches.open(CACHE_NAME).then(function(cache) {
-          cache.put(event.request, responseClone);
-        });
+if (workbox.navigationPreload.isSupported()) {
+  workbox.navigationPreload.enable();
+}
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const preloadResp = await event.preloadResponse;
+
+        if (preloadResp) {
+          return preloadResp;
+        }
+
+        const networkResp = await fetch(event.request);
+        return networkResp;
+      } catch (error) {
+
+        const cache = await caches.open(CACHE);
+        const cachedResp = await cache.match(offlineFallbackPage);
+        return cachedResp;
       }
-      return response;
-    }).catch(function() {
-      return caches.match(event.request);
-    })
-  );
-});
-
-self.addEventListener('activate', function(event) {
-  event.waitUntil(
-    caches.keys().then(function(cacheNames) {
-      return Promise.all(
-        cacheNames.filter(function(cacheName) {
-          return cacheName !== CACHE_NAME;
-        }).map(function(cacheName) {
-          return caches.delete(cacheName);
-        })
-      );
-    }).then(function() {
-      return self.clients.claim();
-    })
-  );
+    })());
+  }
 });
