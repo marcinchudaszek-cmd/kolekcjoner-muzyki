@@ -1957,7 +1957,7 @@ function closeKaraokeModal() {
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-        navigator.serviceWorker.register('./sw.js')
+        navigator.serviceWorker.register('/kolekcjoner-muzyki/sw.js')
             .then(function(registration) {
                 console.log('📱 Service Worker zarejestrowany!');
             })
