@@ -976,6 +976,8 @@ function openMp3Scanner() {
 function closeMp3Modal() { document.getElementById('mp3Modal').classList.remove('active'); }
 
 function scanAudioFiles(files) {
+    console.log('🎵 scanAudioFiles wywołane, plików:', files.length);
+    
     var progressDiv = document.getElementById('mp3Progress');
     var progressFill = document.getElementById('progressFill');
     var progressText = document.getElementById('progressText');
@@ -985,12 +987,25 @@ function scanAudioFiles(files) {
     var albumsMap = {};
     var processed = 0;
     var total = files.length;
+    var skipped = 0;
 
     function processNext(index) {
         if (index >= total) {
             foundAlbumsFromScan = Object.values(albumsMap);
-            if (foundAlbumsFromScan.length === 0) { showNotification('⚠️ Brak albumów!', 'warning'); progressDiv.classList.add('hidden'); return; }
-            foundAlbumsFromScan.forEach(function(a) { if (!a.coverUrl) { fetchAlbumCover(a.artist, a.title, function(c) { if (c) { a.coverUrl = c; displayFoundAlbums(); } }); } });
+            console.log('🎵 Zakończono skanowanie. Albumy:', foundAlbumsFromScan.length, 'Pominięte:', skipped);
+            
+            if (foundAlbumsFromScan.length === 0) { 
+                showNotification('⚠️ Brak albumów! Pliki mogą nie mieć tagów ID3.', 'warning'); 
+                progressDiv.classList.add('hidden'); 
+                return; 
+            }
+            foundAlbumsFromScan.forEach(function(a) { 
+                if (!a.coverUrl) { 
+                    fetchAlbumCover(a.artist, a.title, function(c) { 
+                        if (c) { a.coverUrl = c; displayFoundAlbums(); } 
+                    }); 
+                } 
+            });
             progressDiv.classList.add('hidden');
             resultsDiv.classList.remove('hidden');
             displayFoundAlbums();
@@ -998,11 +1013,32 @@ function scanAudioFiles(files) {
             return;
         }
         var file = files[index];
+        console.log('🎵 Przetwarzam plik', index + 1, '/', total, ':', file.name);
+        
         readID3Tags(file, function(tags) {
+            console.log('🎵 Tagi dla', file.name, ':', tags);
+            
             if (tags && tags.artist && tags.album) {
                 var key = tags.artist.toLowerCase() + '-' + tags.album.toLowerCase();
-                if (!albumsMap[key]) { albumsMap[key] = { artist: tags.artist, title: tags.album, year: tags.year || null, genre: tags.genre ? mapGenre(tags.genre) : 'other', coverUrl: tags.picture || null, tracks: [] }; }
-                albumsMap[key].tracks.push({ title: tags.title || file.name.replace(/\.[^/.]+$/, ''), fileUrl: URL.createObjectURL(file), fileName: file.name });
+                if (!albumsMap[key]) { 
+                    albumsMap[key] = { 
+                        artist: tags.artist, 
+                        title: tags.album, 
+                        year: tags.year || null, 
+                        genre: tags.genre ? mapGenre(tags.genre) : 'other', 
+                        coverUrl: tags.picture || null, 
+                        tracks: [] 
+                    }; 
+                    console.log('🎵 Nowy album:', tags.artist, '-', tags.album);
+                }
+                albumsMap[key].tracks.push({ 
+                    title: tags.title || file.name.replace(/\.[^/.]+$/, ''), 
+                    fileUrl: URL.createObjectURL(file), 
+                    fileName: file.name 
+                });
+            } else {
+                skipped++;
+                console.log('🎵 Pominięto (brak tagów artist/album):', file.name);
             }
             processed++;
             progressFill.style.width = Math.round((processed / total) * 100) + '%';
@@ -1023,16 +1059,108 @@ function displayFoundAlbums() {
 }
 
 function readID3Tags(file, callback) {
-    if (typeof jsmediatags === 'undefined') { callback(null); return; }
+    console.log('🏷️ Czytam tagi dla:', file.name);
+    
+    if (typeof jsmediatags === 'undefined') { 
+        console.error('🏷️ jsmediatags nie załadowany!');
+        // Fallback - użyj nazwy pliku
+        var fallbackTags = parseFilename(file.name);
+        callback(fallbackTags);
+        return; 
+    }
+    
     jsmediatags.read(file, {
         onSuccess: function(tag) {
             var t = tag.tags;
+            console.log('🏷️ Surowe tagi:', t);
+            
             var pic = null;
-            if (t.picture) { try { var d = t.picture.data; var b = ''; for (var i = 0; i < d.length; i++) b += String.fromCharCode(d[i]); pic = 'data:' + t.picture.format + ';base64,' + btoa(b); } catch(e) {} }
-            callback({ title: t.title, artist: t.artist, album: t.album, year: t.year, genre: t.genre, picture: pic });
+            if (t.picture) { 
+                try { 
+                    var d = t.picture.data; 
+                    var b = ''; 
+                    for (var i = 0; i < d.length; i++) b += String.fromCharCode(d[i]); 
+                    pic = 'data:' + t.picture.format + ';base64,' + btoa(b); 
+                } catch(e) {
+                    console.error('🏷️ Błąd obrazka:', e);
+                } 
+            }
+            
+            var result = { 
+                title: t.title, 
+                artist: t.artist, 
+                album: t.album, 
+                year: t.year, 
+                genre: t.genre, 
+                picture: pic 
+            };
+            
+            // Jeśli brak artysty lub albumu, spróbuj wyciągnąć z nazwy pliku
+            if (!result.artist || !result.album) {
+                var fromFilename = parseFilename(file.name);
+                if (!result.artist) result.artist = fromFilename.artist;
+                if (!result.album) result.album = fromFilename.album;
+                if (!result.title) result.title = fromFilename.title;
+            }
+            
+            callback(result);
         },
-        onError: function() { callback(null); }
+        onError: function(error) { 
+            console.error('🏷️ Błąd odczytu tagów:', error);
+            // Fallback - użyj nazwy pliku
+            var fallbackTags = parseFilename(file.name);
+            callback(fallbackTags);
+        }
     });
+}
+
+// Parsuj nazwę pliku żeby wyciągnąć artystę/tytuł
+function parseFilename(filename) {
+    // Usuń rozszerzenie
+    var name = filename.replace(/\.[^/.]+$/, '');
+    
+    // Wyczyść śmieci
+    name = name
+        .replace(/[_]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    
+    var artist = 'Nieznany artysta';
+    var title = name;
+    var album = 'Pojedyncze utwory';
+    
+    // Wzorce: "Artysta - Tytuł", "01. Artysta - Tytuł", "Artysta-Tytuł"
+    var patterns = [
+        /^(\d+[\.\-\s]+)?(.+?)\s*[-–—]\s*(.+)$/,  // "01. Artysta - Tytuł" lub "Artysta - Tytuł"
+        /^(.+?)\s*[-–—]\s*(.+)$/                   // "Artysta-Tytuł"
+    ];
+    
+    for (var i = 0; i < patterns.length; i++) {
+        var match = name.match(patterns[i]);
+        if (match) {
+            if (match.length === 4) {
+                // "01. Artysta - Tytuł"
+                artist = match[2].trim();
+                title = match[3].trim();
+            } else if (match.length === 3) {
+                // "Artysta - Tytuł"
+                artist = match[1].trim();
+                title = match[2].trim();
+            }
+            break;
+        }
+    }
+    
+    console.log('🏷️ Z nazwy pliku:', { artist: artist, title: title, album: album });
+    
+    return {
+        artist: artist,
+        album: album,
+        title: title,
+        year: null,
+        genre: null,
+        picture: null
+    };
 }
 
 function mapGenre(g) {
@@ -2023,7 +2151,7 @@ function closeKaraokeModal() {
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-        navigator.serviceWorker.register('./sw.js')
+        navigator.serviceWorker.register('/kolekcjoner-muzyki/sw.js')
             .then(function(registration) {
                 console.log('📱 Service Worker zarejestrowany!');
             })
